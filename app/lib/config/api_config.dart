@@ -7,13 +7,16 @@ class ApiConfig {
   // TODO [API]: Set your cloud backend base URL
   //   e.g. "https://your-firebase-project.cloudfunctions.net"
   //   or   "http://localhost:3000" for local dev
-  static const String baseUrl = 'http://localhost:3000';
+  // Use explicit loopback IP to avoid macOS localhost resolution issues
+  static const String baseUrl = 'http://127.0.0.1:8000';
 
   // --- REST Endpoints ---
   static const String postAlarm       = '/api/alarms';          // POST { userId, alarmTime, ringtone }
   static const String dismissAlarm    = '/api/alarm/dismiss';   // POST { userId, timestamp }
   static String sleepSummary(String userId) => '/api/sleep/summary/$userId'; // GET
+  static String sleepHistory(String userId) => '/api/sleep/history/$userId'; // GET
   static const String postDreamAudio  = '/api/dream/audio';     // POST (multipart, audio file)
+  static String dreamJournal(String userId) => '/api/dreams/$userId'; // GET
 
   // TODO [API]: Add auth token / Firebase ID token header if needed
   static Map<String, String> get headers => {

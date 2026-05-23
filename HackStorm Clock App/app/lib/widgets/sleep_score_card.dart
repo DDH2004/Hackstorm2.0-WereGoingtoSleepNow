@@ -25,7 +25,7 @@ class SleepScoreCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E2E),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _color.withOpacity(0.3), width: 1),
+        border: Border.all(color: _color.withValues(alpha: 0.3), width: 1),
       ),
       child: Column(
         children: [
@@ -35,7 +35,7 @@ class SleepScoreCard extends StatelessWidget {
             '$score',
             style: TextStyle(color: _color, fontSize: 72, fontWeight: FontWeight.bold),
           ),
-          Text(_label, style: TextStyle(color: _color.withOpacity(0.7), fontSize: 16)),
+          Text(_label, style: TextStyle(color: _color.withValues(alpha: 0.7), fontSize: 16)),
         ],
       ),
     );

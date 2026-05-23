@@ -167,7 +167,7 @@ class _AlarmSetupScreenState extends State<AlarmSetupScreen> {
               child: SwitchListTile(
                 title: const Text('Alarm Enabled', style: TextStyle(color: Colors.white)),
                 value: _alarmEnabled,
-                activeColor: const Color(0xFF7C4DFF),
+                activeThumbColor: const Color(0xFF7C4DFF),
                 onChanged: (val) => setState(() => _alarmEnabled = val),
                 contentPadding: EdgeInsets.zero,
               ),

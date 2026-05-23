@@ -67,7 +67,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E1E2E),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF7C4DFF).withOpacity(0.15)),
+                  border: Border.all(color: const Color(0xFF7C4DFF).withValues(alpha: 0.15)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

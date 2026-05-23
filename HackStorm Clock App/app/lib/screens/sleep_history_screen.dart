@@ -126,9 +126,9 @@ class _SleepHistoryScreenState extends State<SleepHistoryScreen> {
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E2E),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1E1E2E),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

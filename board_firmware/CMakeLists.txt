@@ -1,29 +1,28 @@
-cmake_minimum_required(VERSION 3.5)
+# @file CMakeLists.txt
+# @brief HackStorm Smart Alarm Clock Application
 
-project(HackStorm_Clock_App C)
+set(APP_PATH ${CMAKE_CURRENT_LIST_DIR})
 
-# Include the main TuyaOpen CMakeLists.txt
-include(${CMAKE_CURRENT_LIST_DIR}/../../AIoTHackStorm/CMakeLists.txt)
+# Collect source files
+aux_source_directory(${APP_PATH}/src APP_SRCS)
 
-# Add our application source
-add_executable(hackstorm_clock
-    src/main.c
-    src/display_manager.c
-    src/http_server.c
-    src/time_manager.c
+# Configure target
+add_library(tuyaapp STATIC
+    ${APP_SRCS}
 )
 
-# Link libraries
-target_link_libraries(hackstorm_clock
+# Set include directories
+target_include_directories(tuyaapp
     PRIVATE
-    tuya_cloud_sdk
-    mbedtls
-    cjson
+    ${APP_PATH}/src
+    ${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/include
+    ${CMAKE_SOURCE_DIR}/src/libcjson/cJSON
 )
 
-# Include directories
-target_include_directories(hackstorm_clock
-    PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/include
-    ${CMAKE_CURRENT_LIST_DIR}/../../AIoTHackStorm/src
+# Link dependencies
+target_link_libraries(tuyaapp
+    tal_system
+    tal_wifi
+    board_init
+    tdl_display
 )

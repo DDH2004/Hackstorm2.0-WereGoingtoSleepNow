@@ -1,0 +1,45 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# TuyaOpen build artifacts
+.build/
+dist/
+/platform/
+/tools/tyutool/
+/tools/cmake/__pycache__/
+*.using_config
+*monitor.log
+.cache/
+cache/
+tuyadb/
+.mirror
+.set_example
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+*.iml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Credentials / secrets
+.env
+.env.*
+*.key

@@ -1,0 +1,44 @@
+name: hackstorm_smart_alarm
+description: HackStorm 2.0 Smart Alarm Clock - Sleep Intelligence Platform
+
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+  fl_chart: ^0.66.0           # For sleep score charts
+  table_calendar: ^3.0.9      # Calendar widget for history
+  intl: ^0.19.0               # Date formatting
+
+  # Networking
+  http: ^1.2.0                # REST API calls
+  # TODO [TUYA]: Add tuya_smart_home_sdk or equivalent Tuya Flutter plugin
+  # See: https://developer.tuya.com/en/docs/app-development/sdk-development
+
+  # State Management
+  provider: ^6.1.1
+
+  # Audio recording (for dream journal voice capture)
+  record: ^6.0.0
+  audioplayers: ^6.0.0
+
+  # Storage
+  shared_preferences: ^2.2.2  # Local alarm cache
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/ringtones/

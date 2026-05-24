@@ -12,6 +12,7 @@
 
 #include "tal_api.h"
 #include "tkl_output.h"
+#include "tkl_audio.h"
 #include "netmgr.h"
 #include "netconn_wifi.h"
 #include "tdl_display_manage.h"
@@ -20,6 +21,7 @@
 #include "alarm_sound.h"
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 // ==========================================
 // CONFIGURATION
@@ -311,12 +313,14 @@ static void cmd_dismiss_alarm(int argc, char *argv[])
 
 // cmd: ring_alarm  →  ALARM_RINGING
 // Bridge sends this when it detects alarm time. Plays sound immediately.
+// ECHO FIRST so the bridge sees a response before the audio thread starts
+// consuming CPU. Then kick off the sound in the background.
 static void cmd_ring_alarm(int argc, char *argv[])
 {
-    g_alarm_ringing = true;
-    alarm_sound_start();
-    PR_NOTICE("Alarm ringing (triggered by bridge)");
     tal_cli_echo("ALARM_RINGING\r\n");
+    g_alarm_ringing = true;
+    PR_NOTICE("Alarm ringing (triggered by bridge)");
+    alarm_sound_start();
 }
 
 // cmd: get_status  →  STATUS:<alarm_h>:<alarm_m>:<active>:<cur_h>:<cur_m>
@@ -332,12 +336,74 @@ static void cmd_get_status(int argc, char *argv[])
     tal_cli_echo(buf);
 }
 
+// cmd: test_audio  →  plays a 440 Hz beep for 3 seconds using tkl layer directly
+// This bypasses tdd/tdl to isolate whether the speaker hardware works.
+static void cmd_test_audio(int argc, char *argv[])
+{
+    tal_cli_echo("AUDIO_TEST_START\r\n");
+    PR_NOTICE("[test_audio] initialising audio...");
+
+    TKL_AUDIO_CONFIG_T cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.enable             = 1;          // AEC path — required for speaker on T5AI
+    cfg.card               = TKL_AUDIO_TYPE_BOARD;
+    cfg.ai_chn             = TKL_AI_0;
+    cfg.sample             = TKL_AUDIO_SAMPLE_16K;
+    cfg.datebits           = TKL_AUDIO_DATABITS_16;
+    cfg.channel            = TKL_AUDIO_CHANNEL_MONO;
+    cfg.codectype          = TKL_CODEC_AUDIO_PCM;
+    cfg.spk_sample         = TKL_AUDIO_SAMPLE_16K;
+    cfg.spk_gpio           = TUYA_GPIO_NUM_28;
+    cfg.spk_gpio_polarity  = 0;          // polarity=0 → mute at LOW, active at HIGH
+    cfg.spk_volume         = 80;
+
+    OPERATE_RET rt = tkl_ai_init(&cfg, 0);
+    if (rt != OPRT_OK) {
+        PR_ERR("[test_audio] tkl_ai_init failed: %d", rt);
+        tal_cli_echo("AUDIO_TEST_FAIL\r\n");
+        return;
+    }
+
+    rt = tkl_ai_start(TKL_AUDIO_TYPE_BOARD, TKL_AI_0);
+    if (rt != OPRT_OK) {
+        PR_ERR("[test_audio] tkl_ai_start failed: %d", rt);
+        tal_cli_echo("AUDIO_TEST_FAIL\r\n");
+        return;
+    }
+
+    tkl_ai_set_vol(TKL_AUDIO_TYPE_BOARD, TKL_AI_0, 80);
+    tkl_ao_set_vol(TKL_AUDIO_TYPE_BOARD, TKL_AO_0, NULL, 80);
+
+    PR_NOTICE("[test_audio] pushing 3s of 440 Hz beep...");
+
+    // Build one frame of 440 Hz square wave (320 samples = 20 ms at 16 kHz)
+    #define TEST_FRAME_SAMPLES 320
+    static int16_t s_test_frame[TEST_FRAME_SAMPLES];
+    int half_period = 16000 / (440 * 2); // ~18 samples
+    for (int i = 0; i < TEST_FRAME_SAMPLES; i++) {
+        s_test_frame[i] = ((i / half_period) & 1) ? -16000 : 16000;
+    }
+
+    TKL_AUDIO_FRAME_INFO_T frame;
+    frame.pbuf      = (char *)s_test_frame;
+    frame.used_size = TEST_FRAME_SAMPLES * 2;
+
+    // 150 frames × 20 ms = 3 seconds
+    for (int i = 0; i < 150; i++) {
+        tkl_ao_put_frame(0, 0, NULL, &frame);
+    }
+
+    PR_NOTICE("[test_audio] done");
+    tal_cli_echo("AUDIO_TEST_DONE\r\n");
+}
+
 static const cli_cmd_t g_cli_cmds[] = {
     { "set_time",     "set_time <unix_ts>",  cmd_set_time     },
     { "set_alarm",    "set_alarm <HH> <MM>", cmd_set_alarm    },
     { "ring_alarm",   "ring_alarm",          cmd_ring_alarm   },
     { "dismiss_alarm","dismiss_alarm",        cmd_dismiss_alarm},
     { "get_status",   "get_status",           cmd_get_status   },
+    { "test_audio",   "test_audio",           cmd_test_audio   },
 };
 
 // ==========================================
@@ -430,6 +496,12 @@ void user_main(void)
     PR_NOTICE("Clock seeded from compile time: %lu", (unsigned long)compile_ts);
 
     PR_NOTICE("System services initialized");
+
+    // Initialise audio HW once, BEFORE display init.
+    // Calling tkl_ai_init() after the LCD is up corrupts the display, so we
+    // do it here and never touch it again. alarm_sound_start() then just pushes
+    // frames through the already-running audio pipeline.
+    alarm_sound_init();
 
     // Step 2: Initialize Display
     PR_NOTICE("[2/5] Initializing display...");

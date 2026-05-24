@@ -17,6 +17,7 @@
 #include "tdl_display_manage.h"
 #include "tdl_display_draw.h"
 #include "board_com_api.h"
+#include "alarm_sound.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -26,6 +27,10 @@
 
 #define WIFI_SSID     "Shyam's iPhone"
 #define WIFI_PASSWORD "your_hotspot_password"
+
+// Your UTC offset in whole hours (e.g. -5 for EST, -7 for PDT, +1 for CET, +5 for PKT)
+// This corrects the compile-time clock seed, which uses local build time but POSIX is UTC.
+#define BUILD_UTC_OFFSET_HOURS  (0)
 
 #ifndef DISPLAY_NAME
 #define DISPLAY_NAME "lcd_disp"
@@ -54,6 +59,7 @@ static volatile int  g_alarm_hour    = -1;
 static volatile int  g_alarm_minute  = -1;
 static volatile bool g_alarm_active  = false;
 static volatile bool g_alarm_ringing = false;
+
 
 
 // ==========================================
@@ -230,6 +236,7 @@ static void display_update_thread(void *arg)
             tm.tm_hour == g_alarm_hour && tm.tm_min == g_alarm_minute && tm.tm_sec == 0) {
             g_alarm_ringing = true;
             PR_NOTICE("ALARM TRIGGERED: %02d:%02d", g_alarm_hour, g_alarm_minute);
+            alarm_sound_start();
         }
 
         // Flash red/white while ringing; white otherwise
@@ -297,6 +304,7 @@ static void cmd_dismiss_alarm(int argc, char *argv[])
 {
     g_alarm_active  = false;
     g_alarm_ringing = false;
+    alarm_sound_stop();
     PR_NOTICE("Alarm dismissed");
     tal_cli_echo("ALARM_DISMISSED\r\n");
 }
@@ -369,7 +377,9 @@ static TIME_T get_compile_time(void)
     if (month > 2 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)))
         days++;
 
-    return (TIME_T)(days * 86400L + hour * 3600 + min * 60 + sec);
+    TIME_T local_ts = (TIME_T)(days * 86400L + hour * 3600 + min * 60 + sec);
+    // Convert local build time → UTC by subtracting the timezone offset
+    return local_ts - (TIME_T)(BUILD_UTC_OFFSET_HOURS * 3600);
 }
 
 // ==========================================

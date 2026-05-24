@@ -22,45 +22,51 @@ class ApiService {
   final String _baseUrl = ApiConfig.baseUrl;
 
   // ----------------------------------------------------------
-  // POST /api/alarms
-  // Sends alarm config to backend. Backend stores it and pushes
-  // to Tuya Board via MQTT topic: tuya/alarm/config
+  // POST /api/alarms → serial bridge → board set_alarm
   // ----------------------------------------------------------
   Future<bool> postAlarm(Alarm alarm) async {
-    // TODO [API]: Uncomment when backend is live
-    // final response = await http.post(
-    //   Uri.parse('$_baseUrl${ApiConfig.postAlarm}'),
-    //   headers: ApiConfig.headers,
-    //   body: jsonEncode(alarm.toJson()),
-    // );
-    // return response.statusCode == 200;
-
-    // STUB: Simulate success
-    await Future.delayed(const Duration(milliseconds: 500));
-    print('[STUB] POST /api/alarms → ${alarm.toJson()}');
-    return true;
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/alarms'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'alarmTime': alarm.alarmTime.toIso8601String()}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[API] postAlarm error: $e');
+      return false;
+    }
   }
 
   // ----------------------------------------------------------
-  // POST /api/alarm/dismiss
-  // Tells backend user dismissed the alarm. Backend publishes
-  // MQTT 'dismiss' to board → board prompts "What did you dream?"
+  // POST /api/alarm/dismiss → bridge clears ringing + board
   // ----------------------------------------------------------
   Future<bool> dismissAlarm(String userId) async {
-    // TODO [API]: Uncomment when backend is live
-    // final response = await http.post(
-    //   Uri.parse('$_baseUrl${ApiConfig.dismissAlarm}'),
-    //   headers: ApiConfig.headers,
-    //   body: jsonEncode({
-    //     'userId': userId,
-    //     'timestamp': DateTime.now().toIso8601String(),
-    //   }),
-    // );
-    // return response.statusCode == 200;
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/alarm/dismiss'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[API] dismissAlarm error: $e');
+      return false;
+    }
+  }
 
-    await Future.delayed(const Duration(milliseconds: 500));
-    print('[STUB] POST /api/alarm/dismiss → userId: $userId');
-    return true;
+  // ----------------------------------------------------------
+  // GET /api/alarm/status → {ringing: bool}
+  // ----------------------------------------------------------
+  Future<bool> getAlarmRinging() async {
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl/api/alarm/status'));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body)['ringing'] as bool;
+      }
+    } catch (e) {
+      print('[API] getAlarmRinging error: $e');
+    }
+    return false;
   }
 
   // ----------------------------------------------------------

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/alarm.dart';
 import '../models/sleep_summary.dart';
@@ -14,7 +15,6 @@ class AppState extends ChangeNotifier {
   final ApiService _api = ApiService();
   final TuyaService _tuya = TuyaService();
 
-  // TODO [API]: Replace with real user ID from auth
   final String userId = 'demo-user-001';
 
   Alarm? currentAlarm;
@@ -24,6 +24,29 @@ class AppState extends ChangeNotifier {
 
   bool isLoading = false;
   bool alarmIsRinging = false;
+
+  Timer? _pollTimer;
+
+  AppState() {
+    // Poll the bridge every 30 s to detect when the alarm fires.
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollAlarmStatus());
+    // Also check immediately on startup.
+    _pollAlarmStatus();
+  }
+
+  Future<void> _pollAlarmStatus() async {
+    final ringing = await _api.getAlarmRinging();
+    if (ringing != alarmIsRinging) {
+      alarmIsRinging = ringing;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
 
   // ----------------------------------------------------------
   // EVENING FLOW: User sets alarm
@@ -51,17 +74,12 @@ class AppState extends ChangeNotifier {
 
   // ----------------------------------------------------------
   // MORNING FLOW: User dismisses alarm
-  // App → Cloud API → MQTT → Board shows "What did you dream?"
   // ----------------------------------------------------------
   Future<void> dismissAlarm() async {
     alarmIsRinging = false;
     notifyListeners();
 
     await _api.dismissAlarm(userId);
-    // TODO [TUYA]: Also send directly if needed
-    // await _tuya.sendDismissToBoard(userId);
-
-    // Load sleep summary after dismissal
     await loadSleepSummary();
   }
 

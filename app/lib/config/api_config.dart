@@ -7,7 +7,7 @@ class ApiConfig {
   // TODO [API]: Set your cloud backend base URL
   //   e.g. "https://your-firebase-project.cloudfunctions.net"
   //   or   "http://localhost:3000" for local dev
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'http://localhost:8080';
 
   // --- REST Endpoints ---
   static const String postAlarm       = '/api/alarms';          // POST { userId, alarmTime, ringtone }

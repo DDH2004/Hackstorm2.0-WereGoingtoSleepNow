@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/app_state.dart';
 import 'screens/home_screen.dart';
+import 'screens/alarm_ringing_screen.dart';
 
 // ============================================================
 // HACKSTORM 2.0: SMART ALARM CLOCK
@@ -45,7 +46,11 @@ class SmartAlarmApp extends StatelessWidget {
             secondary: Color(0xFF448AFF),
           ),
         ),
-        home: const HomeScreen(),
+        home: Consumer<AppState>(
+          builder: (context, state, _) => state.alarmIsRinging
+              ? const AlarmRingingScreen()
+              : const HomeScreen(),
+        ),
       ),
     );
   }

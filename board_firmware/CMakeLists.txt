@@ -25,4 +25,5 @@ target_link_libraries(tuyaapp
     tal_wifi
     board_init
     tdl_display
+    tuyaos_adapter
 )

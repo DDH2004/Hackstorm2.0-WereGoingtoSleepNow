@@ -32,7 +32,7 @@ RESPONSE_TIMEOUT = 2.0
 # ── Test alarm ────────────────────────────────────────────────────────────────
 # Set to "HH:MM" (24-hour) to pre-load an alarm for quick testing, e.g. "14:32"
 # Set to "" to disable.
-TEST_ALARM = "13:33"
+TEST_ALARM = "13:53"
 
 # ── Serial (optional – best effort) ──────────────────────────────────────────
 ser: serial.Serial | None = None
@@ -77,11 +77,15 @@ def _check_alarm_loop():
             if now.hour == alarm_hour and now.minute == alarm_minute:
                 alarm_ringing = True
                 print(f"[bridge] ALARM TRIGGERED {alarm_hour:02d}:{alarm_minute:02d}")
-                # Best-effort: tell board to ring too
-                threading.Thread(
-                    target=lambda: send_command("dismiss_alarm") or None,
-                    daemon=True,
-                ).start()
+                # Tell board to play sound — retry up to 5 times
+                def _ring_board():
+                    for _ in range(5):
+                        resp = send_command("ring_alarm")
+                        print(f"[bridge] ring_alarm → {repr(resp)}")
+                        if resp == "ALARM_RINGING":
+                            break
+                        time.sleep(1)
+                threading.Thread(target=_ring_board, daemon=True).start()
 
 
 # ── HTTP handler ──────────────────────────────────────────────────────────────

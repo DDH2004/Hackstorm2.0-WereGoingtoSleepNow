@@ -309,6 +309,16 @@ static void cmd_dismiss_alarm(int argc, char *argv[])
     tal_cli_echo("ALARM_DISMISSED\r\n");
 }
 
+// cmd: ring_alarm  →  ALARM_RINGING
+// Bridge sends this when it detects alarm time. Plays sound immediately.
+static void cmd_ring_alarm(int argc, char *argv[])
+{
+    g_alarm_ringing = true;
+    alarm_sound_start();
+    PR_NOTICE("Alarm ringing (triggered by bridge)");
+    tal_cli_echo("ALARM_RINGING\r\n");
+}
+
 // cmd: get_status  →  STATUS:<alarm_h>:<alarm_m>:<active>:<cur_h>:<cur_m>
 static void cmd_get_status(int argc, char *argv[])
 {
@@ -323,8 +333,9 @@ static void cmd_get_status(int argc, char *argv[])
 }
 
 static const cli_cmd_t g_cli_cmds[] = {
-    { "set_time",     "set_time <unix_ts>", cmd_set_time     },
+    { "set_time",     "set_time <unix_ts>",  cmd_set_time     },
     { "set_alarm",    "set_alarm <HH> <MM>", cmd_set_alarm    },
+    { "ring_alarm",   "ring_alarm",          cmd_ring_alarm   },
     { "dismiss_alarm","dismiss_alarm",        cmd_dismiss_alarm},
     { "get_status",   "get_status",           cmd_get_status   },
 };

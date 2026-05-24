@@ -127,4 +127,15 @@ class AppState extends ChangeNotifier {
     dreamJournal = await _api.getDreamJournal(userId);
     notifyListeners();
   }
+
+  // ----------------------------------------------------------
+  // Add a dream entry locally (after simulated recording)
+  // ----------------------------------------------------------
+  void addDreamEntry(String transcription) {
+    dreamJournal = [
+      DreamEntry(date: DateTime.now(), transcription: transcription),
+      ...dreamJournal,
+    ];
+    notifyListeners();
+  }
 }

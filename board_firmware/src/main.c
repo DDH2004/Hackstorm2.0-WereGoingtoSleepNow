@@ -123,19 +123,25 @@ static int display_init(void)
 #define DIG_W  48   // digit cell width  (px)
 #define DIG_H  80   // digit cell height (px)
 
+// Helper: fill using corner coords {x0,y0,x1,y1} — the only rect API available
+#define FILL(x0, y0, x1, y1, col) do { \
+    TDL_DISP_RECT_T _r = {(x0),(y0),(x1),(y1)}; \
+    tdl_disp_draw_fill(g_disp_fb, &_r, (col), g_disp_info.is_swap); \
+} while(0)
+
 // bit0=A(top) bit1=B(top-right) bit2=C(bot-right) bit3=D(bottom)
 // bit4=E(bot-left) bit5=F(top-left) bit6=G(middle)
 static const uint8_t SEG_MAP[10] = {
-    0b0111111, // 0: A B C D E F
-    0b0000110, // 1: B C
-    0b1011011, // 2: A B D E G
-    0b1001111, // 3: A B C D G
-    0b1100110, // 4: B C F G
-    0b1101101, // 5: A C D F G
-    0b1111101, // 6: A C D E F G
-    0b0000111, // 7: A B C
-    0b1111111, // 8: all
-    0b1101111, // 9: A B C D F G
+    0x3F, // 0: A B C D E F
+    0x06, // 1: B C
+    0x5B, // 2: A B D E G
+    0x4F, // 3: A B C D G
+    0x66, // 4: B C F G
+    0x6D, // 5: A C D F G
+    0x7D, // 6: A C D E F G
+    0x07, // 7: A B C
+    0x7F, // 8: all
+    0x6F, // 9: A B C D F G
 };
 
 static void draw_digit(int x, int y, int digit, uint32_t color)
@@ -144,35 +150,21 @@ static void draw_digit(int x, int y, int digit, uint32_t color)
     uint8_t s   = SEG_MAP[digit];
     int     mid = DIG_H / 2;
 
-    // A: top horizontal
-    if (s & 0b0000001)
-        tdl_disp_draw_fill_rect(g_disp_fb, x,            y,             DIG_W, SEG_W, color, g_disp_info.is_swap);
-    // B: top-right vertical
-    if (s & 0b0000010)
-        tdl_disp_draw_fill_rect(g_disp_fb, x + DIG_W - SEG_W, y,       SEG_W, mid,   color, g_disp_info.is_swap);
-    // C: bottom-right vertical
-    if (s & 0b0000100)
-        tdl_disp_draw_fill_rect(g_disp_fb, x + DIG_W - SEG_W, y + mid, SEG_W, mid,   color, g_disp_info.is_swap);
-    // D: bottom horizontal
-    if (s & 0b0001000)
-        tdl_disp_draw_fill_rect(g_disp_fb, x,            y + DIG_H - SEG_W, DIG_W, SEG_W, color, g_disp_info.is_swap);
-    // E: bottom-left vertical
-    if (s & 0b0010000)
-        tdl_disp_draw_fill_rect(g_disp_fb, x,            y + mid,     SEG_W, mid,   color, g_disp_info.is_swap);
-    // F: top-left vertical
-    if (s & 0b0100000)
-        tdl_disp_draw_fill_rect(g_disp_fb, x,            y,           SEG_W, mid,   color, g_disp_info.is_swap);
-    // G: middle horizontal
-    if (s & 0b1000000)
-        tdl_disp_draw_fill_rect(g_disp_fb, x,            y + mid - SEG_W/2, DIG_W, SEG_W, color, g_disp_info.is_swap);
+    if (s & 0x01) FILL(x,            y,            x+DIG_W,       y+SEG_W,       color); // A top
+    if (s & 0x02) FILL(x+DIG_W-SEG_W,y,            x+DIG_W,       y+mid,         color); // B top-right
+    if (s & 0x04) FILL(x+DIG_W-SEG_W,y+mid,        x+DIG_W,       y+DIG_H,       color); // C bot-right
+    if (s & 0x08) FILL(x,            y+DIG_H-SEG_W,x+DIG_W,       y+DIG_H,       color); // D bottom
+    if (s & 0x10) FILL(x,            y+mid,         x+SEG_W,       y+DIG_H,       color); // E bot-left
+    if (s & 0x20) FILL(x,            y,             x+SEG_W,       y+mid,         color); // F top-left
+    if (s & 0x40) FILL(x,            y+mid-SEG_W/2, x+DIG_W,       y+mid+SEG_W/2, color); // G middle
 }
 
 static void draw_colon(int x, int y, uint32_t color)
 {
     int dot = SEG_W + 2;
     int mid = DIG_H / 2;
-    tdl_disp_draw_fill_rect(g_disp_fb, x, y + mid/2,       dot, dot, color, g_disp_info.is_swap);
-    tdl_disp_draw_fill_rect(g_disp_fb, x, y + mid + mid/2, dot, dot, color, g_disp_info.is_swap);
+    FILL(x, y+mid/2,       x+dot, y+mid/2+dot,       color);
+    FILL(x, y+mid+mid/2,   x+dot, y+mid+mid/2+dot,   color);
 }
 
 // ==========================================

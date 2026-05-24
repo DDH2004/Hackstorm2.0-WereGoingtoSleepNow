@@ -9,3 +9,7 @@ Start Bridge
 pip install pyserial        # one-time
 python serial_bridge.py --port /dev/cu.usbmodem5AAE1670581
 
+Test alarm, go to serial_bruidge.py
+- Switch test alarm
+python serial_bridge.py --port /dev/cu.usbmodem5AAE1670581
+Capital R in flutter app

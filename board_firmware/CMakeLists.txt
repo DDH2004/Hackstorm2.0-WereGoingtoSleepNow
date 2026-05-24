@@ -16,6 +16,7 @@ target_include_directories(tuyaapp
     PRIVATE
     ${APP_PATH}/src
     ${CMAKE_SOURCE_DIR}/src/peripherals/display/tdl_display/include
+    ${CMAKE_SOURCE_DIR}/src/peripherals/audio_codecs/tdl_audio/include
     ${CMAKE_SOURCE_DIR}/src/libcjson/cJSON
 )
 
@@ -25,5 +26,6 @@ target_link_libraries(tuyaapp
     tal_wifi
     board_init
     tdl_display
+    audio_codecs
     tuyaos_adapter
 )

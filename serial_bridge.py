@@ -32,7 +32,7 @@ RESPONSE_TIMEOUT = 2.0
 # ── Test alarm ────────────────────────────────────────────────────────────────
 # Set to "HH:MM" (24-hour) to pre-load an alarm for quick testing, e.g. "14:32"
 # Set to "" to disable.
-TEST_ALARM = "13:12"
+TEST_ALARM = "13:33"
 
 # ── Serial (optional – best effort) ──────────────────────────────────────────
 ser: serial.Serial | None = None

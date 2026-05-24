@@ -7,7 +7,9 @@ class ApiConfig {
   // TODO [API]: Set your cloud backend base URL
   //   e.g. "https://your-firebase-project.cloudfunctions.net"
   //   or   "http://localhost:3000" for local dev
-  static const String baseUrl = 'http://localhost:8080';
+  // Use your Mac's LAN IP (run: ipconfig getifaddr en0) when on a physical device.
+  // Use 'http://localhost:8080' for the iOS simulator.
+  static const String baseUrl = 'http://192.168.34.207:8080';
 
   // --- REST Endpoints ---
   static const String postAlarm       = '/api/alarms';          // POST { userId, alarmTime, ringtone }

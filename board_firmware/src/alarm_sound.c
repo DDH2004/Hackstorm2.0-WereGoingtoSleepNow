@@ -1,93 +1,78 @@
 /**
- * alarm_sound.c — Plays a repeating beep tone through the T5AI board speaker
- * using the tkl_ao audio output API.
+ * alarm_sound.c
  *
- * The board speaker enable pin is TUYA_GPIO_NUM_28, active-LOW.
- * Audio is PCM 16kHz mono 16-bit, matching the registered codec config.
+ * Plays a repeating beep through the board speaker using the TDL audio layer.
+ * The codec ("audio_codec") is registered by board_register_hardware() with
+ * speaker enable on GPIO 28, active-LOW — we don't need to re-specify that here.
+ *
+ * Flow: tdl_audio_find → tdl_audio_open → tdl_audio_play (loop) → tdl_audio_close
  */
 
 #include "alarm_sound.h"
 #include "tal_api.h"
-#include "tkl_audio.h"
+#include "tdl_audio_manage.h"
 #include <string.h>
 
-#define SAMPLE_RATE    16000
-#define FRAME_SAMPLES  640          // 40 ms per frame at 16 kHz
-#define FRAME_BYTES    (FRAME_SAMPLES * 2)
+#ifndef AUDIO_CODEC_NAME
+#define AUDIO_CODEC_NAME "audio_codec"
+#endif
 
-#define BEEP_FREQ_HZ   880          // A5 — piercing but not harsh
-#define BEEP_ON_FRAMES 10           // 400 ms on
-#define BEEP_OFF_FRAMES 5           // 200 ms off
+#define SAMPLE_RATE      16000
+#define FRAME_SAMPLES    320        // 20 ms at 16 kHz
+#define FRAME_BYTES      (FRAME_SAMPLES * 2)
 
-#define SPEAKER_GPIO      28        // TUYA_GPIO_NUM_28
-#define SPEAKER_POLARITY  1         // 1 = low-enable (active LOW)
+#define BEEP_FREQ_HZ     880        // A5
+#define BEEP_ON_FRAMES   20         // 400 ms on
+#define BEEP_OFF_FRAMES  10         // 200 ms off
+#define MAX_BEEP_CYCLES  450        // ~3 min auto-stop
 
 static THREAD_HANDLE  g_sound_thread = NULL;
 static volatile bool  g_sound_stop   = false;
 
-static int16_t g_pcm_tone[FRAME_SAMPLES];
-static int16_t g_pcm_silence[FRAME_SAMPLES];
+static int16_t g_tone[FRAME_SAMPLES];
+static int16_t g_silence[FRAME_SAMPLES];
 
-static void build_square_wave(void)
+static void build_tone(void)
 {
     int half = SAMPLE_RATE / (BEEP_FREQ_HZ * 2);
     if (half < 1) half = 1;
     for (int i = 0; i < FRAME_SAMPLES; i++)
-        g_pcm_tone[i] = ((i / half) & 1) ? -16000 : 16000;
-    memset(g_pcm_silence, 0, sizeof(g_pcm_silence));
-}
-
-static void push_frame(int16_t *samples)
-{
-    TKL_AUDIO_FRAME_INFO_T frame;
-    memset(&frame, 0, sizeof(frame));
-    frame.pbuf      = (char *)samples;
-    frame.used_size = FRAME_BYTES;
-    tkl_ao_put_frame(0, 0, NULL, &frame);
+        g_tone[i] = ((i / half) & 1) ? -16000 : 16000;
+    memset(g_silence, 0, sizeof(g_silence));
 }
 
 static void alarm_sound_thread(void *arg)
 {
-    build_square_wave();
+    build_tone();
 
-    TKL_AUDIO_CONFIG_T cfg;
-    memset(&cfg, 0, sizeof(cfg));
-    cfg.enable             = 1;
-    cfg.card               = TKL_AUDIO_TYPE_BOARD;
-    cfg.ai_chn             = TKL_AI_0;
-    cfg.sample             = TKL_AUDIO_SAMPLE_16K;
-    cfg.datebits           = TKL_AUDIO_DATABITS_16;
-    cfg.channel            = TKL_AUDIO_CHANNEL_MONO;
-    cfg.codectype          = TKL_CODEC_AUDIO_PCM;
-    cfg.fps                = 25;
-    cfg.mic_volume         = 0x2d;
-    cfg.spk_volume         = 80;
-    cfg.spk_gpio           = SPEAKER_GPIO;
-    cfg.spk_gpio_polarity  = SPEAKER_POLARITY;
-    cfg.spk_sample         = TKL_AUDIO_SAMPLE_16K;
-
-    OPERATE_RET rt = tkl_ai_init(&cfg, 1);
-    if (rt != OPRT_OK) {
-        PR_ERR("[alarm] tkl_ai_init failed: %d", rt);
+    TDL_AUDIO_HANDLE_T hdl = NULL;
+    OPERATE_RET rt = tdl_audio_find(AUDIO_CODEC_NAME, &hdl);
+    if (rt != OPRT_OK || hdl == NULL) {
+        PR_ERR("[alarm] tdl_audio_find failed: %d", rt);
+        g_sound_thread = NULL;
         return;
     }
-    tkl_ai_start(TKL_AUDIO_TYPE_BOARD, TKL_AI_0);
-    tkl_ao_set_vol(TKL_AUDIO_TYPE_BOARD, TKL_AO_0, NULL, 80);
 
-    // Auto-stop after 3 minutes if dismiss never arrives
-    int max_cycles = (3 * 60 * 1000) / (BEEP_ON_FRAMES + BEEP_OFF_FRAMES) / 40 + 1;
+    rt = tdl_audio_open(hdl, NULL);
+    if (rt != OPRT_OK) {
+        PR_ERR("[alarm] tdl_audio_open failed: %d", rt);
+        g_sound_thread = NULL;
+        return;
+    }
+
+    tdl_audio_volume_set(hdl, 80);
+
     int cycles = 0;
-    while (!g_sound_stop && cycles < max_cycles) {
+    while (!g_sound_stop && cycles < MAX_BEEP_CYCLES) {
         for (int i = 0; i < BEEP_ON_FRAMES && !g_sound_stop; i++)
-            push_frame(g_pcm_tone);
+            tdl_audio_play(hdl, (uint8_t *)g_tone, FRAME_BYTES);
         for (int i = 0; i < BEEP_OFF_FRAMES && !g_sound_stop; i++)
-            push_frame(g_pcm_silence);
+            tdl_audio_play(hdl, (uint8_t *)g_silence, FRAME_BYTES);
         cycles++;
     }
 
-    tkl_ao_stop(0, TKL_AO_0, NULL);
-    tkl_ai_stop(TKL_AUDIO_TYPE_BOARD, TKL_AI_0);
-    tkl_ai_uninit();
+    tdl_audio_play_stop(hdl);
+    tdl_audio_close(hdl);
     g_sound_thread = NULL;
 }
 
@@ -97,9 +82,11 @@ void alarm_sound_start(void)
     g_sound_stop = false;
     THREAD_CFG_T cfg = {.stackDepth = 4096, .priority = THREAD_PRIO_2, .thrdname = "alarm_snd"};
     tal_thread_create_and_start(&g_sound_thread, NULL, NULL, alarm_sound_thread, NULL, &cfg);
+    PR_NOTICE("[alarm] sound started");
 }
 
 void alarm_sound_stop(void)
 {
     g_sound_stop = true;
+    PR_NOTICE("[alarm] sound stop requested");
 }

@@ -16,18 +16,56 @@ if [ ! -d "$SDK" ]; then
   exit 1
 fi
 
-# ── 2. Recreate the venv ───────────────────────────────────────────────────────
+# ── 2. Find Python 3.12 ───────────────────────────────────────────────────────
+# The build system bakes the venv's python path into cmake/ninja files, so the
+# venv must be created with exactly Python 3.12. Try common locations in order.
+find_python312() {
+  for cmd in python3.12 python3 python; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      ver=$("$cmd" -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>/dev/null)
+      if [ "$ver" = "3.12" ]; then
+        echo "$cmd"
+        return 0
+      fi
+    fi
+  done
+  # Homebrew on Apple Silicon installs versioned binaries here
+  for p in /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12; do
+    if [ -x "$p" ]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PYTHON312=$(find_python312) || {
+  echo ""
+  echo "ERROR: Python 3.12 not found."
+  echo ""
+  echo "Install it:"
+  echo "  macOS  : download from https://www.python.org/downloads/macos/"
+  echo "           or: brew install python@3.12"
+  echo "  Ubuntu : sudo apt install python3.12 python3.12-venv"
+  echo "  Fedora : sudo dnf install python3.12"
+  echo ""
+  echo "After installing, re-run: ./setup.sh"
+  exit 1
+}
+echo "Using Python 3.12: $PYTHON312 ($($PYTHON312 --version))"
+
+# ── 3. Recreate the venv ───────────────────────────────────────────────────────
 # Wipe stale build caches too: they bake in absolute cmake/python paths from
 # the old venv, so they must be regenerated alongside the new venv.
 echo "Creating virtual environment..."
 rm -rf "$SDK/.venv"
 rm -rf "$SDK/platform/T5AI/t5_os/build"
 rm -rf "$SDK/apps/hackstorm_clock/.build"
-python3.12 -m venv "$SDK/.venv"
+"$PYTHON312" -m venv "$SDK/.venv"
 
 # CMake calls 'python' (not 'python3') to detect arm64 vs x86_64.
 # Without this symlink the wrong toolchain is selected and the build fails.
-ln -sf "$(python3.12 -c 'import sys; print(sys.executable)')" "$SDK/.venv/bin/python"
+ln -sf "$("$PYTHON312" -c 'import sys; print(sys.executable)')" "$SDK/.venv/bin/python"
 
 echo "Installing dependencies..."
 "$SDK/.venv/bin/pip" install -q -r "$SDK/requirements.txt"
@@ -39,7 +77,7 @@ if [ -f "$SDK/tools/tyutool/requirements.txt" ]; then
   "$SDK/.venv/bin/pip" install -q -r "$SDK/tools/tyutool/requirements.txt"
 fi
 
-# ── 3. Copy firmware into AIoTHackStorm/apps/hackstorm_clock ─────────────────
+# ── 4. Copy firmware into AIoTHackStorm/apps/hackstorm_clock ─────────────────
 # app_default.config selects the board + LCD module. cmake reads it on first
 # build and generates the full config (using.config) from scratch.
 # We never run 'tos.py config choice' here — that command overwrites

@@ -27,8 +27,8 @@ ser: serial.Serial = None
 ser_lock = threading.Lock()
 
 
-def send_command(cmd: str) -> str:
-    """Send a CLI command to the board and return the first response line."""
+def send_command(cmd: str, debug: bool = False) -> str:
+    """Send a CLI command to the board and return the first non-log response line."""
     with ser_lock:
         ser.reset_input_buffer()
         ser.write((cmd + "\r\n").encode())
@@ -36,6 +36,8 @@ def send_command(cmd: str) -> str:
         deadline = time.time() + RESPONSE_TIMEOUT
         while time.time() < deadline:
             line = ser.readline().decode(errors="replace").strip()
+            if debug and line:
+                print(f"  [raw] {repr(line)}")
             # Skip log lines (they start with '['); wait for our response
             if line and not line.startswith("["):
                 return line
@@ -132,6 +134,23 @@ def main():
         print(f"[bridge] ERROR: {e}")
         print("[bridge] Make sure tos.py monitor is stopped first (Ctrl+C it).")
         sys.exit(1)
+
+    # Wait for board CLI to finish booting, then sync time.
+    # Retry up to 5 times in case the board is mid-boot.
+    print("[bridge] Waiting for board CLI to be ready...")
+    synced = False
+    for attempt in range(5):
+        time.sleep(3)
+        unix_ts = int(time.time())
+        print(f"[bridge] set_time attempt {attempt+1}: {unix_ts}")
+        resp = send_command(f"set_time {unix_ts}", debug=True)
+        print(f"[bridge] Board responded: {repr(resp)}")
+        if resp == "TIME_SET":
+            print("[bridge] Time synced successfully.")
+            synced = True
+            break
+    if not synced:
+        print("[bridge] WARNING: could not sync time (board may need a reset).")
 
     print(f"[bridge] Listening on http://localhost:{LISTEN_PORT}")
     print("[bridge] Flutter app should point to http://localhost:8080")

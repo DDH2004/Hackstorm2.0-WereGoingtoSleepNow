@@ -54,6 +54,7 @@ static volatile int  g_alarm_hour   = -1;
 static volatile int  g_alarm_minute = -1;
 static volatile bool g_alarm_active = false;
 
+
 // ==========================================
 // DISPLAY INITIALIZATION
 // ==========================================
@@ -231,6 +232,18 @@ static void http_server_thread(void *arg)
 // serial_bridge.py can drive the board.
 // ==========================================
 
+// cmd: set_time <unix_ts>  →  TIME_SET
+// Bridge calls this on startup with the Mac's current UTC epoch time.
+// We store the delta between real time and what the chip thinks it is.
+static void cmd_set_time(int argc, char *argv[])
+{
+    if (argc < 2) { tal_cli_echo("ERR: usage: set_time <unix_ts>\r\n"); return; }
+    TIME_T provided = (TIME_T)atol(argv[1]);
+    tal_time_set_posix(provided, 2);
+    PR_NOTICE("Time set via CLI: %lu", (unsigned long)provided);
+    tal_cli_echo("TIME_SET\r\n");
+}
+
 // cmd: set_alarm <HH> <MM>  →  ALARM_SET:<HH>:<MM>
 static void cmd_set_alarm(int argc, char *argv[])
 {
@@ -269,6 +282,7 @@ static void cmd_get_status(int argc, char *argv[])
 }
 
 static const cli_cmd_t g_cli_cmds[] = {
+    { "set_time",     "set_time <unix_ts>", cmd_set_time     },
     { "set_alarm",    "set_alarm <HH> <MM>", cmd_set_alarm    },
     { "dismiss_alarm","dismiss_alarm",        cmd_dismiss_alarm},
     { "get_status",   "get_status",           cmd_get_status   },
@@ -289,6 +303,40 @@ static void wifi_status_callback(netmgr_type_e type, netmgr_status_e stat)
         g_wifi_connected = false;
         PR_NOTICE("WiFi Disconnected");
     }
+}
+
+// ==========================================
+// COMPILE-TIME CLOCK SEED
+// Converts __DATE__ / __TIME__ to a POSIX timestamp so the board
+// shows approximately correct UTC time without WiFi or serial input.
+// ==========================================
+
+static TIME_T get_compile_time(void)
+{
+    // __DATE__ format: "May 24 2026"   __TIME__ format: "10:30:45"
+    static const char *mon_names = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    const char *d = __DATE__;
+    const char *t = __TIME__;
+
+    char mon_buf[4] = {d[0], d[1], d[2], '\0'};
+    int  month = 1;
+    for (int i = 0; i < 12; i++) {
+        if (strncmp(mon_buf, mon_names + i * 3, 3) == 0) { month = i + 1; break; }
+    }
+    int day  = atoi(d + 4);
+    int year = atoi(d + 7);
+    int hour = atoi(t);
+    int min  = atoi(t + 3);
+    int sec  = atoi(t + 6);
+
+    // Days from 1970-01-01 to compile date (Gregorian, good enough for 2020-2100)
+    int y = year - 1970;
+    static const int mdays[12] = {0,31,59,90,120,151,181,212,243,273,304,334};
+    long days = (long)y * 365 + (y + 1) / 4 + mdays[month - 1] + (day - 1);
+    if (month > 2 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)))
+        days++;
+
+    return (TIME_T)(days * 86400L + hour * 3600 + min * 60 + sec);
 }
 
 // ==========================================
@@ -321,6 +369,11 @@ void user_main(void)
     tal_cli_init();
 
     tal_cli_cmd_register(g_cli_cmds, sizeof(g_cli_cmds) / sizeof(g_cli_cmds[0]));
+
+    // Seed clock from compile time (build+flash takes ~60-90s, add that as offset)
+    TIME_T compile_ts = get_compile_time() + 90;
+    tal_time_set_posix(compile_ts, 2);
+    PR_NOTICE("Clock seeded from compile time: %lu", (unsigned long)compile_ts);
 
     PR_NOTICE("System services initialized");
 

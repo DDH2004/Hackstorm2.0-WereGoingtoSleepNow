@@ -50,9 +50,10 @@ static THREAD_HANDLE g_http_thread = NULL;
 static volatile bool g_wifi_connected = false;
 
 // Alarm state set via serial bridge
-static volatile int  g_alarm_hour   = -1;
-static volatile int  g_alarm_minute = -1;
-static volatile bool g_alarm_active = false;
+static volatile int  g_alarm_hour    = -1;
+static volatile int  g_alarm_minute  = -1;
+static volatile bool g_alarm_active  = false;
+static volatile bool g_alarm_ringing = false;
 
 
 // ==========================================
@@ -120,81 +121,95 @@ static int display_init(void)
 //   memset(fb->frame, 0, fb->len)                          ← clear screen
 // ==========================================
 
-#define SEG_W  8    // segment bar thickness (px)
-#define DIG_W  48   // digit cell width  (px)
-#define DIG_H  80   // digit cell height (px)
+// ==========================================
+// 7-SEGMENT RENDERING — LANDSCAPE (90° CCW)
+//
+// Physical display is 320×480 portrait.
+// We draw in logical 480×320 landscape coordinates.
+// Transform: landscape(lx,ly) → portrait(319-ly, lx)
+// No framebuffer rotation needed — just flush the single buffer.
+// ==========================================
 
-// Helper: fill using corner coords {x0,y0,x1,y1} — the only rect API available
-#define FILL(x0, y0, x1, y1, col) do { \
-    TDL_DISP_RECT_T _r = {(x0),(y0),(x1),(y1)}; \
+#define PORT_H 480   // physical portrait height
+
+// Fill a landscape rect given landscape corners (lx0,ly0)→(lx1,ly1)
+// 90° CW: landscape(lx,ly) → portrait(ly, PORT_H-1-lx)
+#define FILL_L(lx0, ly0, lx1, ly1, col) do { \
+    TDL_DISP_RECT_T _r = {(ly0), PORT_H-1-(lx1), (ly1), PORT_H-1-(lx0)}; \
     tdl_disp_draw_fill(g_disp_fb, &_r, (col), g_disp_info.is_swap); \
 } while(0)
+
+#define SEG_W  6    // segment thickness (landscape px)
+#define DIG_W  44   // digit width  (landscape px)
+#define DIG_H  70   // digit height (landscape px)
 
 // bit0=A(top) bit1=B(top-right) bit2=C(bot-right) bit3=D(bottom)
 // bit4=E(bot-left) bit5=F(top-left) bit6=G(middle)
 static const uint8_t SEG_MAP[10] = {
-    0x3F, // 0: A B C D E F
-    0x06, // 1: B C
-    0x5B, // 2: A B D E G
-    0x4F, // 3: A B C D G
-    0x66, // 4: B C F G
-    0x6D, // 5: A C D F G
-    0x7D, // 6: A C D E F G
-    0x07, // 7: A B C
-    0x7F, // 8: all
-    0x6F, // 9: A B C D F G
+    0x3F, // 0
+    0x06, // 1
+    0x5B, // 2
+    0x4F, // 3
+    0x66, // 4
+    0x6D, // 5
+    0x7D, // 6
+    0x07, // 7
+    0x7F, // 8
+    0x6F, // 9
 };
 
-static void draw_digit(int x, int y, int digit, uint32_t color)
+static void draw_digit(int lx, int ly, int digit, uint32_t color)
 {
     if (digit < 0 || digit > 9) return;
     uint8_t s   = SEG_MAP[digit];
     int     mid = DIG_H / 2;
 
-    if (s & 0x01) FILL(x,            y,            x+DIG_W,       y+SEG_W,       color); // A top
-    if (s & 0x02) FILL(x+DIG_W-SEG_W,y,            x+DIG_W,       y+mid,         color); // B top-right
-    if (s & 0x04) FILL(x+DIG_W-SEG_W,y+mid,        x+DIG_W,       y+DIG_H,       color); // C bot-right
-    if (s & 0x08) FILL(x,            y+DIG_H-SEG_W,x+DIG_W,       y+DIG_H,       color); // D bottom
-    if (s & 0x10) FILL(x,            y+mid,         x+SEG_W,       y+DIG_H,       color); // E bot-left
-    if (s & 0x20) FILL(x,            y,             x+SEG_W,       y+mid,         color); // F top-left
-    if (s & 0x40) FILL(x,            y+mid-SEG_W/2, x+DIG_W,       y+mid+SEG_W/2, color); // G middle
+    if (s & 0x01) FILL_L(lx,            ly,            lx+DIG_W,       ly+SEG_W,        color); // A top
+    if (s & 0x02) FILL_L(lx+DIG_W-SEG_W,ly,            lx+DIG_W,       ly+mid,          color); // B top-right
+    if (s & 0x04) FILL_L(lx+DIG_W-SEG_W,ly+mid,        lx+DIG_W,       ly+DIG_H,        color); // C bot-right
+    if (s & 0x08) FILL_L(lx,            ly+DIG_H-SEG_W,lx+DIG_W,       ly+DIG_H,        color); // D bottom
+    if (s & 0x10) FILL_L(lx,            ly+mid,         lx+SEG_W,       ly+DIG_H,        color); // E bot-left
+    if (s & 0x20) FILL_L(lx,            ly,             lx+SEG_W,       ly+mid,          color); // F top-left
+    if (s & 0x40) FILL_L(lx,            ly+mid-SEG_W/2, lx+DIG_W,       ly+mid+SEG_W/2,  color); // G middle
 }
 
-static void draw_colon(int x, int y, uint32_t color)
+static void draw_colon(int lx, int ly, uint32_t color)
 {
     int dot = SEG_W + 2;
     int mid = DIG_H / 2;
-    FILL(x, y+mid/2,       x+dot, y+mid/2+dot,       color);
-    FILL(x, y+mid+mid/2,   x+dot, y+mid+mid/2+dot,   color);
+    FILL_L(lx, ly+mid/2,       lx+dot, ly+mid/2+dot,     color);
+    FILL_L(lx, ly+mid+mid/2,   lx+dot, ly+mid+mid/2+dot, color);
 }
 
 // ==========================================
 // DISPLAY UPDATE THREAD
 // ==========================================
 
-static void display_show_time(TIME_T timestamp)
+static void display_show_time(TIME_T timestamp, uint32_t digit_color)
 {
     if (!g_disp_fb) return;
 
     POSIX_TM_S tm = {0};
     tal_time_gmtime_r(&timestamp, &tm);
 
-    // Clear framebuffer directly (matches vr_avatar pattern)
     memset(g_disp_fb->frame, 0x00, g_disp_fb->len);
 
-    // Centre HH:MM on 320x480 screen
-    // Total width: 4*DIG_W + 1 colon(16) + 3 gaps(8) = 192 + 16 + 24 = 232
-    int gap   = 8;
-    int cgap  = 16;
-    int total = 4 * DIG_W + cgap + 3 * gap;
-    int x     = (g_screen_width  - total) / 2;
-    int y     = (g_screen_height - DIG_H) / 2;
+    // Landscape 480×320 — HH:MM:SS centred
+    // total = 6*DIG_W + 5*gap + 2*cgap = 322
+    int gap   = 6;
+    int cgap  = 14;
+    int total = 6 * DIG_W + 5 * gap + 2 * cgap;
+    int lx    = (480 - total) / 2;   // ~79
+    int ly    = (320 - DIG_H) / 2;   // 125
 
-    draw_digit(x,                         y, tm.tm_hour / 10, 0xFFFF);
-    draw_digit(x + DIG_W + gap,           y, tm.tm_hour % 10, 0xFFFF);
-    draw_colon(x + 2*(DIG_W+gap),         y, 0x07E0);  // green colon
-    draw_digit(x + 2*(DIG_W+gap) + cgap,  y, tm.tm_min  / 10, 0xFFFF);
-    draw_digit(x + 3*(DIG_W+gap) + cgap,  y, tm.tm_min  % 10, 0xFFFF);
+    draw_digit(lx,                             ly, tm.tm_hour / 10, digit_color);
+    draw_digit(lx +   DIG_W +   gap,           ly, tm.tm_hour % 10, digit_color);
+    draw_colon(lx + 2*(DIG_W +  gap),          ly, 0x07E0);
+    draw_digit(lx + 2*(DIG_W +  gap) +  cgap,  ly, tm.tm_min  / 10, digit_color);
+    draw_digit(lx + 3*(DIG_W +  gap) +  cgap,  ly, tm.tm_min  % 10, digit_color);
+    draw_colon(lx + 4*(DIG_W +  gap) +  cgap,  ly, 0x07E0);
+    draw_digit(lx + 4*(DIG_W +  gap) + 2*cgap, ly, tm.tm_sec  / 10, digit_color);
+    draw_digit(lx + 5*(DIG_W +  gap) + 2*cgap, ly, tm.tm_sec  % 10, digit_color);
 
     tdl_disp_dev_flush(g_disp_hdl, g_disp_fb);
     g_disp_fb = (g_disp_fb == g_disp_fb_1) ? g_disp_fb_2 : g_disp_fb_1;
@@ -203,12 +218,29 @@ static void display_show_time(TIME_T timestamp)
 static void display_update_thread(void *arg)
 {
     PR_NOTICE("Display thread started");
+    static int flash_toggle = 0;
 
     while (1) {
         TIME_T current_time = tal_time_get_posix();
-        display_show_time(current_time);
+        POSIX_TM_S tm = {0};
+        tal_time_gmtime_r(&current_time, &tm);
 
-        tal_system_sleep(1000); // Update every second
+        // Trigger alarm at exactly HH:MM:00
+        if (g_alarm_active && !g_alarm_ringing &&
+            tm.tm_hour == g_alarm_hour && tm.tm_min == g_alarm_minute && tm.tm_sec == 0) {
+            g_alarm_ringing = true;
+            PR_NOTICE("ALARM TRIGGERED: %02d:%02d", g_alarm_hour, g_alarm_minute);
+        }
+
+        // Flash red/white while ringing; white otherwise
+        uint32_t color = 0xFFFF;
+        if (g_alarm_ringing) {
+            flash_toggle ^= 1;
+            color = flash_toggle ? 0xF800 : 0xFFFF; // red 565 / white 565
+        }
+
+        display_show_time(current_time, color);
+        tal_system_sleep(1000);
     }
 }
 
@@ -263,7 +295,8 @@ static void cmd_set_alarm(int argc, char *argv[])
 // cmd: dismiss_alarm  →  ALARM_DISMISSED
 static void cmd_dismiss_alarm(int argc, char *argv[])
 {
-    g_alarm_active = false;
+    g_alarm_active  = false;
+    g_alarm_ringing = false;
     PR_NOTICE("Alarm dismissed");
     tal_cli_echo("ALARM_DISMISSED\r\n");
 }
